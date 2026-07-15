@@ -161,11 +161,11 @@ def main():
     print("Saved")
 
     file = 'points.pt'
-    pts = torch.load(os.path.join(output_path + file))
+    pts = torch.load(os.path.join(output_path, file))
     print("First and last point:", pts[0], pts[-1]) ##check if all points had been saved
     file = 'vedves.pt'
 # Load the data points from the file
-    vedves = torch.load(os.path.join(output_path + file))
+    vedves = torch.load(os.path.join(output_path, file))
     x = torch.tensor(pts, dtype = torch.float64)
     y = torch.tensor(vedves, dtype=torch.float64)
 
