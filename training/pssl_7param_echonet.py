@@ -325,8 +325,8 @@ class IntervalNormalizationLayer(torch.nn.Module):
     def __init__(self):
         super().__init__()
         # new_output = [Tc, start_p, Emax, Emin, Rm, Ra, Vd]
-        self.a = torch.tensor([0.4, 0., 0.5, 0.02, 0.005, 0.0001, 4.], dtype=torch.float32) #HR in 20-200->Tc in [0.3, 4]
-        self.b = torch.tensor([1.7, 280., 3.5, 0.1, 0.1, 0.25, 16.], dtype=torch.float32)
+        self.register_buffer("a", torch.tensor([0.4, 0., 0.5, 0.02, 0.005, 0.0001, 4.], dtype=torch.float32)) #HR in 20-200->Tc in [0.3, 4]
+        self.register_buffer("b", torch.tensor([1.7, 280., 3.5, 0.1, 0.1, 0.25, 16.], dtype=torch.float32))
         #taken out (initial conditions): a: 20, 5, 50; b: 400, 20, 100
     def forward(self, inputs):
         sigmoid_output = torch.sigmoid(inputs)
@@ -375,8 +375,8 @@ class NEW3DCNN(nn.Module):
 class Interpolator(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(6, 250).double()
-        self.fc2 = nn.Linear(250, 2).double()
+        self.fc1 = nn.Linear(6, 256).double()
+        self.fc2 = nn.Linear(256, 2).double()
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -395,6 +395,8 @@ def main():
     ID = args.ID
     echonet_input_directory = args.echonet_input_directory
 
+    os.makedirs(output_path, exist_ok=True)
+
     path = echonet_input_directory
 
     file = f"{ID}_epoch_{num_epochs}_lr_{learning_rate}"
@@ -404,7 +406,9 @@ def main():
 
     # Initialize the neural network
     net = Interpolator()
-    net.load_state_dict(torch.load(pretext_model_path))
+    net.load_state_dict(torch.load(pretext_model_path, map_location=device))
+    net.to(device)
+    net.eval()
     print("Done loading the pretext model!")
 
     model = NEW3DCNN(num_parameters = 7)
@@ -421,23 +425,23 @@ def main():
 
     # loading validation set
     validation_data = Echo(root = path, split = 'val', target_type=['EF', 'EDV', 'ESV'])
-    val_loader = DataLoader(validation_data, batch_size=len(validation_data), shuffle=True)
+    val_loader = DataLoader(validation_data, batch_size=batch_size, shuffle=False)
     print(len(validation_data))
 
     test_data = Echo(root = path, split = 'test', target_type=['EF', 'EDV', 'ESV'])
-    test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=True)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     print(len(test_data))
     test_iter = next(iter(test_loader))
     test_seq = test_iter[0]
-    test_tensor = torch.tensor(test_seq, dtype=torch.float32) 
+    test_tensor = test_seq.to(device=device, dtype=torch.float32) 
 
-    test_EF = test_iter[1][0]
+    test_EF = test_iter[1][0].to(device=device, dtype=torch.float32)
 
     val_data = next(iter(val_loader))
     val_seq = val_data[0]
-    val_tensor = torch.tensor(val_seq, dtype=torch.float32) 
+    val_tensor = val_seq.to(device=device, dtype=torch.float32)
 
-    val_EF = val_data[1][0]
+    val_EF = val_data[1][0].to(device=device, dtype=torch.float32)
 
     print("Done loading validation set!")
 
@@ -453,7 +457,7 @@ def main():
         for j, batch in enumerate(train_loader):
             optimizer.zero_grad()
             seq = batch[0]
-            input_tensor = seq.to(torch.float32)
+            input_tensor = seq.to(device=device, dtype=torch.float32)
 
             #simulated values: sim_output = (V_ED, V_ES)
             x = model(input_tensor).double()
@@ -464,9 +468,9 @@ def main():
             ved, ves= torch.split(output, split_size_or_sections=1, dim=1)
             ef = (ved-ves)/ved*100
 
-            trueV_ED = batch[1][1].double()
-            trueV_ES = batch[1][2].double()
-            true_EF = batch[1][0].double()
+            trueV_ED = batch[1][1].to(device=device, dtype=torch.double)
+            trueV_ES = batch[1][2].to(device=device, dtype=torch.double)
+            true_EF  = batch[1][0].to(device=device, dtype=torch.double)
             #criterion = torch.nn.MSELoss()
             #loss = criterion(ved.flatten(), trueV_ED) + criterion(ves.flatten(), trueV_ES)
             #loss = criterion(ved, trueV_ED) + criterion(ves, trueV_ES) + criterion(ef, true_EF)
@@ -485,8 +489,8 @@ def main():
             val_output = val_output1 + val_Vd -4
             a, b = torch.split(val_output, split_size_or_sections=1, dim=1)
             val_sim_EF = (a-b)/a*100
-        val_EF_np = val_EF.numpy()
-        val_sim_EF_np = val_sim_EF.detach().numpy()
+        val_EF_np = val_EF.cpu().numpy()
+        val_sim_EF_np = val_sim_EF.detach().cpu().numpy()
         MAE = np.mean(np.abs(val_EF_np - val_sim_EF_np.flatten()))
         #lr_scheduler.step(MAE)
         print("Epoch [{}/{}], Loss: {:.4f}, valid MAE: {:.4f}".format(epoch+1, num_epochs, epoch_loss, MAE))
@@ -501,16 +505,16 @@ def main():
             test_output = test_output1 + test_Vd -4
             a, b = torch.split(test_output, split_size_or_sections=1, dim=1)
             test_sim_EF = (a-b)/a*100
-            test_EF_np = test_EF.numpy()
-            test_sim_EF_np = test_sim_EF.detach().numpy()
+            test_EF_np = test_EF.cpu().numpy()
+            test_sim_EF_np = test_sim_EF.detach().cpu().numpy()
 
             combined = torch.cat((test_sim_EF, test_EF.unsqueeze(1), test_x), dim=1)
-            np_array = combined.detach().numpy()
+            np_array = combined.detach().cpu().numpy()
             np.savetxt(f'{output_path}/{file}_best_model.csv', np_array, delimiter=',', header='sim_EF,trueEF, Tc, start_v, start_p, Emax, Emin, Rs, Cs, Vd')
             torch.save(model.state_dict(), f'{output_path}/{file}_weight_best_model.pt')
         
 
-    torch.save(model.state_dict(), os.path.join(output_path,f'{file}_end_weight.py'))
+    torch.save(model.state_dict(), os.path.join(output_path,f'{file}_end_weight.pt'))
 
 
 if __name__ == "__main__":
