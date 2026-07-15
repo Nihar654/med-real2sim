@@ -88,7 +88,7 @@ def f(Tc, start_v, Emax, Emin, Rm, Ra, Vd, N, plotloops):
     return ved, ves, ef, minv, minp, maxp, isperiodic
 
 class Interpolator(nn.Module):
-    def __init__(self):
+    def __init__(self, n_pars, n_neurons):
         super().__init__()
         self.fc1 = nn.Linear(n_pars, n_neurons).double()
         self.fc2 = nn.Linear(n_neurons, 2).double()
@@ -101,9 +101,9 @@ class Interpolator(nn.Module):
 def main():
     args = parse_arguments()
     output_path = args.output_path
-    N = 70
+    N = 10
     ints = [[0.4, 1.7], [0., 280.], [0.5, 3.5], [0.02, 0.1], [0.005, 0.1], [0.0001, 0.25]] #validity interval for each learnable parameter
-    nvals_pars = [4, 3, 5, 4, 4, 4] #number of values taken from each parameter
+    nvals_pars = [3, 2, 3, 2, 2, 2] #number of values taken from each parameter
     vds = np.linspace(4., 25., 15) # Vd volumes taken (not used for the interpolator)
 
     n_pars = len(ints)
@@ -161,11 +161,11 @@ def main():
     print("Saved")
 
     file = 'points.pt'
-    pts = torch.load(output_path + file)
+    pts = torch.load(os.path.join(output_path + file))
     print("First and last point:", pts[0], pts[-1]) ##check if all points had been saved
     file = 'vedves.pt'
 # Load the data points from the file
-    vedves = torch.load(output_path + file)
+    vedves = torch.load(os.path.join(output_path + file))
     x = torch.tensor(pts, dtype = torch.float64)
     y = torch.tensor(vedves, dtype=torch.float64)
 
@@ -174,10 +174,10 @@ def main():
     lr = 0.01
     threshold_train = 1.
     threshold_test = 2.
-    n_epochs = 30000
+    n_epochs = 5000
 
 # Initialize the neural network
-    net = Interpolator()
+    net = Interpolator(n_pars, n_neurons)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     losses = []
@@ -194,14 +194,14 @@ def main():
           optimizer.step()
 
       # Print progress
-          if epoch % 5000 == 0:
+          if epoch % 1000 == 0:
               print(f'Epoch {epoch}, loss: {loss.item():.4f}')
               losses.append(loss.item())
 
-      if abs(losses[-1] - losses[-2])<5.:
+      if len(losses)>=2 and abs(losses[-1] - losses[-2])<5.:
         lr = lr / 10.
         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-      if (i>10 and losses>50.):
+      if (i>10 and losses[-1]>50.):
         n_neurons += 24
         net = Interpolator()
       if (i>30): break

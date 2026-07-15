@@ -100,9 +100,9 @@ def main():
     output_path = args.output_path
 
     #method 1:
-    n0=20
-    n1=15
-    n2=35
+    n0=5
+    n1=5
+    n2=5
 
     N = n0*n1*n2
     N_test = 50
@@ -214,7 +214,7 @@ def main():
     d2 = 0
 
     # Train the neural network
-    for epoch in range(1000000):
+    for epoch in range(5000):
         # Forward pass
         y_pred = net(x)
         loss = criterion(y_pred, y)
@@ -236,9 +236,9 @@ def main():
         if (loss.item()<8. and d2==0):
           d2 = 1
           optimizer = torch.optim.Adam(net.parameters(), lr=0.0001)
-    file_name = 'interp7param_weight.pt'
+    file_name = 'interp3param_weight.pt'
     torch.save(net.state_dict(), os.path.join(output_path, file_name))
-    torch.save(net.state_dict(), '/accounts/biost/grad/keying_kuang/ML/interpolator3/interp3_weight_2.pt')
+    #torch.save(net.state_dict(), '/accounts/biost/grad/keying_kuang/ML/interpolator3/interp3_weight_2.pt')
 
 
     #for testing the interpolator:
